@@ -1,0 +1,36 @@
+{% extends "home.html" %}
+
+{% block todo_container %}
+<main class="container mt-5" style="max-width: 600px;">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">Добавление задачи пользователю</h3>
+        </div>
+        <div class="card-body">
+            {% if not users %}
+            <div class="alert alert-warning">Сначала добавьте хотя бы одного пользователя!</div>
+            {% endif %}
+            
+            <form method="post" action="/todo/add">
+                <div class="mb-3">
+                    <label class="form-label">Текст задачи</label>
+                    <input type="text" name="item" class="form-control" placeholder="Что нужно сделать?" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Назначить пользователю</label>
+                    <select name="user_email" class="form-select" required>
+                        <option value="" disabled selected>Выберите пользователя...</option>
+                        {% for user in users %}
+                        <option value="{{ user.email }}">{{ user.name }} ({{ user.email }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <a href="/todo" class="btn btn-secondary">Назад</a>
+                    <button type="submit" class="btn btn-primary" {% if not users %}disabled{% endif %}>Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</main>
+{% endblock %}

@@ -1,41 +1,51 @@
 {% extends "home.html" %}
 
 {% block todo_container %}
-<main class="container">
-    <hr>
-    <section class="container-fluid">
-        <form method="post">
-            <div class="col-auto">
-                <div class="input-group mb-3">
-                    <input type="text" name="item" value="{{ item }}" class="form-control" placeholder="Purchase Packt's Python workshop course" aria-label="Add a todo" aria-describedby="button-addon2" />
-                    <button class="btn btn-outline-primary" type="submit" id="button-addon2">Add Todo</button>
-                </div>
-            </div>
-        </form>
-    </section>
+<main class="container mt-5">
 
-    {% if todo %}
-    <article class="card container-fluid">
-        <br/>
-        <h4>Todo ID: {{ todo.id }}</h4>
-        <p>
-            <strong>Item: {{ todo.item }}</strong>
-        </p>
-    </article>
-    {% else %}
+    <div class="d-flex justify-content-end mb-2">
+        <a href="/docs" class="btn btn-outline-secondary btn-sm">Перейти в Swagger API</a>
+    </div>
+
+    <!-- Кнопки действий -->
+    <div class="text-center mb-5">
+        <a href="/user/add" class="btn btn-success btn-lg me-2 mb-2">+ Добавить пользователя</a>
+        <a href="/todo/add" class="btn btn-primary btn-lg me-2 mb-2">+ Добавить задачу</a>
+        <a href="/user/delete" class="btn btn-danger btn-lg mb-2">- Удалить пользователя</a>
+    </div>
+
+    <!-- Список задач -->
     <section class="container-fluid">
         <h2 align="center">Todos</h2>
         <br>
-        <div class="card">
+        <div class="card mx-auto shadow-sm" style="max-width: 800px;">
             <ul class="list-group list-group-flush">
                 {% for todo in todos %}
-                <li class="list-group-item">
-                    {{ loop.index }}. <a href="/todo/{{ loop.index }}">{{ todo.item }}</a>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        {{ loop.index }}. <a href="/todo/{{ todo.id }}" class="fw-bold text-decoration-none">{{ todo.item }}</a> 
+                        
+                        <span class="text-muted" style="font-size: 0.85em;">
+                            (Кому: 
+                            {% set found_user = users | selectattr("email", "equalto", todo.user_email) | first %}
+                            {% if found_user %}
+                                <b>{{ found_user.name }}</b> — {{ todo.user_email }}
+                            {% else %}
+                                <span class="text-danger">Не назначен (пользователь удален)</span>
+                            {% endif %}
+                            )
+                        </span>
+                    </div>
+                    <a href="/todo/delete/{{ todo.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Удалить эту задачу?');">
+                        Удалить
+                    </a>
                 </li>
+                {% else %}
+                <li class="list-group-item text-muted text-center">Задач пока нет.</li>
                 {% endfor %}
             </ul>
         </div>
     </section>
-    {% endif %}
+
 </main>
 {% endblock %}

@@ -1,70 +1,147 @@
-from fastapi import APIRouter, Path, HTTPException, status, Request
+from fastapi import APIRouter, Request, Form, HTTPException, status
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from model import Todo, TodoItem, TodoItems
+from model import Todo, User, TaskCreate
 
-todo_router = APIRouter()
+html_router = APIRouter(tags=["HTML Страницы"], include_in_schema=False)
+task_router = APIRouter(tags=["Задачи (API)"])
+
+templates = Jinja2Templates(directory="templates")
+
+users_db = {}
 todo_list = []
-templates = Jinja2Templates(directory="templates/")
 
-@todo_router.post("/todo")
-async def add_todo(request: Request):
-    form_data = await request.form()
-    item = form_data.get("item")
-    if item:
-        todo = Todo(id=len(todo_list) + 1, item=item)
-        todo_list.append(todo)
+# ==========================================
+# БЛОК API ДЛЯ SWAGGER
+# ==========================================
+
+@task_router.get("/api/tasks")
+async def get_all_todos():
+    return {"tasks": todo_list}
+
+@task_router.post("/api/tasks")
+async def api_add_todo(task: TaskCreate):
+    # Проверяем, есть ли такой email
+    user = users_db.get(task.user_email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь с таким email не найден!")
+    
+    # Проверяем, совпадает ли имя с тем, что в базе
+    if user.name != task.user_name:
+        raise HTTPException(status_code=400, detail="Имя пользователя не совпадает с указанным email!")
+    
+    new_id = len(todo_list) + 1
+    todo_list.append(Todo(id=new_id, user_email=task.user_email, item=task.item))
+    return {"message": "Задача успешно добавлена", "task": task}
+
+@task_router.put("/api/tasks/{id}")
+async def api_update_todo(id: int, task: TaskCreate):
+    todo = next((t for t in todo_list if t.id == id), None)
+    if not todo:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+
+    user = users_db.get(task.user_email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь с таким email не найден!")
+    
+    if user.name != task.user_name:
+        raise HTTPException(status_code=400, detail="Имя пользователя не совпадает с указанным email!")
+
+    todo.item = task.item
+    todo.user_email = task.user_email
+    return {"message": "Задача обновлена", "task": task}
+
+@task_router.delete("/api/tasks/{id}")
+async def api_delete_todo(id: int):
+    global todo_list
+    todo_list = [t for t in todo_list if t.id != id]
+    return {"message": "Задача удалена"}
+
+# ==========================================
+# БЛОК HTML СТРАНИЦ (Без изменений)
+# ==========================================
+
+@html_router.get("/todo")
+async def get_todos_page(request: Request):
     return templates.TemplateResponse(
-        request=request,
-        name="todo.html",
-        context={"todos": todo_list}
+        request=request, name="todo.html", 
+        context={"todos": todo_list, "users": list(users_db.values())}
     )
 
-@todo_router.get("/todo")
-async def retrieve_todos(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="todo.html",
-        context={"todos": todo_list}
-    )
+@html_router.get("/user/add")
+async def add_user_page(request: Request):
+    return templates.TemplateResponse(request=request, name="add_user.html", context={})
 
-@todo_router.get("/todo/{todo_id}")
-async def get_single_todo(request: Request, todo_id: int = Path(..., title="The ID of the todo to retrieve.")):
-    for todo in todo_list:
-        if todo.id == todo_id:
-            return templates.TemplateResponse(
-                request=request,
-                name="todo.html",
-                context={"todo": todo}
-            )
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Todo with supplied ID doesn't exist"
-    )
+@html_router.post("/user/add")
+async def add_user(name: str = Form(...), email: str = Form(...)):
+    if email in users_db:
+        raise HTTPException(status_code=400, detail="Пользователь с таким email уже существует!")
+    users_db[email] = User(name=name, email=email)
+    return RedirectResponse(url="/todo", status_code=303)
 
-@todo_router.put("/todo/{todo_id}")
-async def update_todo(todo_data: TodoItem, todo_id: int = Path(..., title="The ID of the todo to be updated.")):
-    for todo in todo_list:
-        if todo.id == todo_id:
-            todo.item = todo_data.item
-            return {"message": "Todo updated successfully. (Выполнил: [Игнатченко Владислав])"}
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Todo with supplied ID doesn't exist"
-    )
+@html_router.get("/user/edit/{email}")
+async def edit_user_page(request: Request, email: str):
+    user = users_db.get(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return templates.TemplateResponse(request=request, name="user_edit.html", context={"user": user})
 
-@todo_router.delete("/todo/{todo_id}")
-async def delete_single_todo(todo_id: int):
-    for index in range(len(todo_list)):
-        todo = todo_list[index]
-        if todo.id == todo_id:
-            todo_list.pop(index)
-            return {"message": "Todo deleted successfully. (Выполнил: [Игнатченко Владислав])"}
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Todo with supplied ID doesn't exist"
-    )
+@html_router.post("/user/edit/{old_email}")
+async def update_user(old_email: str, name: str = Form(...), email: str = Form(...)):
+    users_db[email] = User(name=name, email=email)
+    if old_email != email:
+        users_db.pop(old_email, None)
+        for t in todo_list:
+            if t.user_email == old_email:
+                t.user_email = email
+    return RedirectResponse(url="/todo", status_code=303)
 
-@todo_router.delete("/todo")
-async def delete_all_todo():
-    todo_list.clear()
-    return {"message": "Todos deleted successfully. (Выполнил: [Игнатченко Владислав])"}
+@html_router.get("/user/delete")
+async def delete_user_page(request: Request):
+    return templates.TemplateResponse(request=request, name="delete_user.html", context={"users": list(users_db.values())})
+
+@html_router.post("/user/delete/{email}")
+async def delete_user(email: str):
+    if email in users_db:
+        del users_db[email]
+    return RedirectResponse(url="/todo", status_code=303)
+
+@html_router.get("/todo/add")
+async def add_todo_page(request: Request):
+    return templates.TemplateResponse(request=request, name="add_todo.html", context={"users": list(users_db.values())})
+
+@html_router.post("/todo/add")
+async def add_todo(item: str = Form(...), user_email: str = Form(...)):
+    if user_email not in users_db:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    new_id = len(todo_list) + 1
+    todo_list.append(Todo(id=new_id, user_email=user_email, item=item))
+    return RedirectResponse(url="/todo", status_code=303)
+
+@html_router.get("/todo/edit/{id}")
+async def edit_todo_page(request: Request, id: int):
+    todo = next((t for t in todo_list if t.id == id), None)
+    if not todo:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return templates.TemplateResponse(request=request, name="edit.html", context={"todo": todo, "users": list(users_db.values())})
+
+@html_router.post("/todo/edit/{id}")
+async def update_todo(id: int, item: str = Form(...), user_email: str = Form(...)):
+    todo = next((t for t in todo_list if t.id == id), None)
+    if todo:
+        todo.item = item
+        todo.user_email = user_email
+    return RedirectResponse(url="/todo", status_code=303)
+
+@html_router.get("/todo/delete/{id}")
+async def delete_todo(id: int):
+    global todo_list
+    todo_list = [t for t in todo_list if t.id != id]
+    return RedirectResponse(url="/todo", status_code=303)
+
+@html_router.get("/todo/{id}")
+async def view_todo_page(request: Request, id: int):
+    todo = next((t for t in todo_list if t.id == id), None)
+    if not todo:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return templates.TemplateResponse(request=request, name="view.html", context={"todo": todo, "users": list(users_db.values())})
