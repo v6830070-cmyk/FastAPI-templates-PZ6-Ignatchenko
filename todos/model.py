@@ -10,8 +10,14 @@ class Todo(BaseModel):
     user_email: str
     item: str
 
-# Модель для Swagger (теперь просит и имя, и email)
 class TaskCreate(BaseModel):
+    item: str
+    user_name: str
+    user_email: str
+
+# Новая модель: используется только для красивого вывода в Swagger
+class TodoResponse(BaseModel):
+    id: int
     item: str
     user_name: str
     user_email: str

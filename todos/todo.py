@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Request, Form, HTTPException, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from model import Todo, User, TaskCreate
+from model import Todo, User, TaskCreate, TodoResponse
+from typing import List
 
 html_router = APIRouter(tags=["HTML Страницы"], include_in_schema=False)
 task_router = APIRouter(tags=["Задачи (API)"])
@@ -15,18 +16,30 @@ todo_list = []
 # БЛОК API ДЛЯ SWAGGER
 # ==========================================
 
-@task_router.get("/api/tasks")
+@task_router.get("/api/tasks", response_model=List[TodoResponse])
 async def get_all_todos():
-    return {"tasks": todo_list}
+    result = []
+    for todo in todo_list:
+        # Ищем пользователя в базе
+        user = users_db.get(todo.user_email)
+        # Если нашли - берем имя, если удалили - пишем "Неизвестно"
+        user_name = user.name if user else "Неизвестно (пользователь удален)"
+        
+        # Формируем красивый ответ
+        result.append(TodoResponse(
+            id=todo.id,
+            item=todo.item,
+            user_name=user_name,
+            user_email=todo.user_email
+        ))
+    return result
 
 @task_router.post("/api/tasks")
 async def api_add_todo(task: TaskCreate):
-    # Проверяем, есть ли такой email
     user = users_db.get(task.user_email)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь с таким email не найден!")
     
-    # Проверяем, совпадает ли имя с тем, что в базе
     if user.name != task.user_name:
         raise HTTPException(status_code=400, detail="Имя пользователя не совпадает с указанным email!")
     
